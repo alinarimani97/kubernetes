@@ -1,0 +1,206 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data-directus-extensions-0
+  namespace: directus
+spec:
+   storageClassName: lvm-ext4
+   accessModes:
+     - ReadWriteMany
+   resources:
+     requests:
+       storage: 5Gi
+   selector:
+     matchLabels:
+       name: "data-directus-extensions-0"
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data-directus-sqlite-0
+  namespace: directus
+spec:
+   storageClassName: lvm-ext4
+   accessModes:
+     - ReadWriteMany
+   resources:
+     requests:
+       storage: 5Gi
+   selector:
+     matchLabels:
+       name: "data-directus-sqlite-0"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data-directus-uploads-0
+  namespace: directus
+spec:
+   storageClassName: lvm-ext4
+   accessModes:
+     - ReadWriteMany
+   resources:
+     requests:
+       storage: 5Gi
+   selector:
+     matchLabels:
+       name: "data-directus-uploads-0"
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: data-directus-extensions-0
+  labels:
+    name: data-directus-extensions-0
+    app: extensions-directus
+    type: local
+spec:
+  storageClassName: lvm-ext4
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: "/mnt/directus-extensions"
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: data-directus-sqlite-0
+  labels:
+    name: data-directus-sqlite-0
+    app: sqlite-directus
+    type: local
+spec:
+  storageClassName: lvm-ext4
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: "/mnt/directus-sqlite"
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: data-directus-uploads-0
+  labels:
+    name: data-directus-uploads-0
+    app: uploads-directus
+    type: local
+spec:
+  storageClassName: lvm-ext4
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: "/mnt/directus-uploads"
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: directus0
+  namespace: directus
+  labels:
+    name: directus0
+    app: directus0
+spec: 
+  replicas: 1
+  selector:
+    matchLabels:
+      app: directus0
+  template:
+    metadata:
+      labels:
+        app: directus0
+    spec:
+      containers:
+        - name: directus
+          image: 'directus/directus:v9.0.0-rc.69'
+          ports:
+          - name: http
+            containerPort: 8055
+            protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8055
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8055
+          securityContext:
+            runAsUser: 0
+            readOnlyRootFilesystem: false
+          env:
+          - name: KEY
+            value: uuid-gen-here
+          - name: SECRET
+            value: uuid-gen-here
+          - name: ADMIN_EMAIL
+            value: admin-email-here
+          - name: ADMIN_PASSWORD
+            value: admin-password-here
+          volumeMounts:
+          - name: data-directus-uploads-0
+            mountPath: /directus/uploads
+          - name: data-directus-sqlite-0
+            mountPath: /directus/database
+          - name: data-directus-extensions-0
+            mountPath: /directus/extensions
+      volumes:
+      - name: data-directus-sqlite-0
+        persistentVolumeClaim:
+          claimName: data-directus-sqlite-0
+      - name: data-directus-uploads-0
+        persistentVolumeClaim:
+          claimName: data-directus-uploads-0
+      - name: data-directus-extensions-0
+        persistentVolumeClaim:
+          claimName: data-directus-extensions-0
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: directus-local
+  namespace: directus
+spec:
+  type: ClusterIP
+  ports: 
+    - port: 8055
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: directus0     
+---
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: directus
+  namespace: directus
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/backend-protocol: HTTP
+#    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  tls:
+    - hosts:
+        - directus.company.com
+      secretName: company-directus-tls
+  rules:
+    - host: directus.company.io
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: directus-local
+              servicePort: 8055
+
+---
